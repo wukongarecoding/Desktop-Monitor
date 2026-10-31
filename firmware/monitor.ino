@@ -1,9 +1,8 @@
-// zmbj.ino
 #include <Arduino.h>
 #include <FFat.h>
 #include <WiFi.h>
 #include <stdarg.h>
-#include <WebSocketsServer.h>  // ⭐ 依赖库：WebSockets by Markus Sattler
+#include <WebSocketsServer.h>
 
 #include "LGFX_ILI9341_Parallel.hpp"
 #include "config.h"
@@ -38,9 +37,7 @@ static uint32_t hb_last_ms = 0;
 
 static int menuMod(int v);
 
-// ============================================================
-//  网络
-// ============================================================
+
 bool wifi_enabled = false;
 bool wifi_connected = false;
 char wifi_ssid[33] = { 0 };
@@ -50,16 +47,13 @@ char wifi_ip[16] = { 0 };
 static int wifi_state = 0;
 static uint32_t wifi_connect_start = 0;
 
-// ⭐ WebSocket server（替代原来的 WiFiServer）
+
 WebSocketsServer webSocket(81);
 bool ws_server_started = false;
-uint8_t ws_client = 0xFF;  // 当前客户端编号，0xFF = 无
+uint8_t ws_client = 0xFF;
 
 #define WIFI_CFG_PATH "/wifi.cfg"
 
-// ============================================================
-//  二进制接收状态机（替代阻塞式 receive_xxx_blocking）
-// ============================================================
 enum BinKind { BIN_NONE = 0,
                BIN_BG,
                BIN_COVER };
@@ -84,9 +78,7 @@ static void bin_cleanup() {
   _pending.id = 0;
 }
 
-// ============================================================
-//  硬件
-// ============================================================
+
 #define PIN_PWM_OUT 18
 #define PIN_WS2812 48
 
@@ -130,9 +122,7 @@ void update_pwm(float p) {
   ledcWrite(PIN_PWM_OUT, (int)(duty * 255.0f));
 }
 
-// ============================================================
-//  全局时间
-// ============================================================
+
 int g_time_y = 2026;
 int g_time_mo = 1;
 int g_time_d = 1;
@@ -187,9 +177,7 @@ static volatile bool bg_ready = false;
 #define BG_FILE_PATH "/bg.bin"
 static bool g_fs_ok = false;
 
-// ============================================================
-//  双通道输出（串口 + WebSocket）
-// ============================================================
+
 void esp_send_raw(const char* s) {
   Serial.print(s);
   if (ws_client != 0xFF)
@@ -209,9 +197,7 @@ void esp_printf(const char* fmt, ...) {
     webSocket.sendTXT(ws_client, buf, n);
 }
 
-// ============================================================
-//  WiFi
-// ============================================================
+
 static void wifi_cfg_load() {
   if (!g_fs_ok || !FFat.exists(WIFI_CFG_PATH)) return;
   File f = FFat.open(WIFI_CFG_PATH, "r");
@@ -238,7 +224,7 @@ static bool wifi_cfg_save() {
   return true;
 }
 
-// ⭐ WebSocket 事件
+
 void webSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t len);
 
 static void wifi_begin() {
@@ -289,9 +275,7 @@ static void wifi_poll() {
   }
 }
 
-// ============================================================
-//  WS 事件回调
-// ============================================================
+
 void webSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t len) {
   switch (type) {
     case WStype_CONNECTED:
@@ -300,7 +284,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t len) {
         esp_printf("[WS] client %u connected\n", num);
         webSocket.sendTXT(num, "HELLO\n");
       } else if (ws_client != num) {
-        // 已有客户端，拒绝第二个
+
         webSocket.sendTXT(num, "BUSY\n");
         webSocket.disconnect(num);
       }
@@ -310,13 +294,13 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t len) {
       if (num == ws_client) {
         esp_printf("[WS] client %u disconnected\n", num);
         ws_client = 0xFF;
-        bin_cleanup();  // 丢弃未完成传输
+        bin_cleanup();
       }
       break;
 
     case WStype_TEXT:
       {
-        // 可能包含多行
+
         static char tmp[2048];
         size_t n = len < sizeof(tmp) - 1 ? len : sizeof(tmp) - 1;
         memcpy(tmp, payload, n);
@@ -350,9 +334,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t len) {
   }
 }
 
-// ============================================================
-//  FS
-// ============================================================
+
 static void fs_print_info() {
   if (!g_fs_ok) return;
   esp_printf("[FS] total=%u, used=%u\n",
@@ -386,9 +368,7 @@ static bool bg_save_to_fs(const uint8_t* data, size_t len) {
 
 
 
-// ============================================================
-//  时钟
-// ============================================================
+
 static void draw_clock(LGFX_Sprite* c, const char* str,
                        int x0, int y0, int sizeLevel, uint16_t color) {
   const lgfx::IFont* font;
@@ -405,9 +385,7 @@ static void draw_clock(LGFX_Sprite* c, const char* str,
   c->drawString(str, x0, y0);
 }
 
-// ============================================================
-//  串口/WS 命令处理
-// ============================================================
+
 static void handle_serial_line(const char* line) {
   if (strncmp(line, "TIME:", 5) == 0) {
     int y, mo, d, h, mi, s;
@@ -467,7 +445,7 @@ static void handle_serial_line(const char* line) {
     return;
   }
 
-  // ⭐ WS 分块传输：BEGIN / CHUNK / END
+
   if (strncmp(line, "BEGIN:", 6) == 0) {
     unsigned long id = 0, total = 0, chunk = 0;
     char tag[16] = { 0 };
@@ -709,7 +687,7 @@ static void handle_serial_line(const char* line) {
   }
 }
 static void serial_poll() {
-  // ===== 阶段 1：优先处理 binary 接收（非阻塞，主循环不被卡） =====
+
   if (_pending.kind != BIN_NONE) {
     int avail = Serial.available();
     if (avail > 0) {
@@ -738,10 +716,10 @@ static void serial_poll() {
       esp_printf("NAK:%lu:timeout\n", (unsigned long)_pending.id);
       bin_cleanup();
     }
-    return;  // ⭐ binary 处理期间不解析文本
+    return;
   }
 
-  // ===== 阶段 2：普通文本行解析 =====
+
   while (Serial.available()) {
     int ch = Serial.read();
     if (ch < 0) break;
@@ -749,7 +727,7 @@ static void serial_poll() {
       serial_buf[serial_len] = 0;
       if (serial_len > 0) handle_serial_line(serial_buf);
       serial_len = 0;
-      if (_pending.kind != BIN_NONE) break;  // ⭐ 命令触发 binary 立即切模式
+      if (_pending.kind != BIN_NONE) break;
     } else if (ch == '\r') {
     } else if (serial_len < (int)sizeof(serial_buf) - 1) {
       serial_buf[serial_len++] = (char)ch;
@@ -780,9 +758,7 @@ static void draw_home() {
   push_with_fps(&canvas);
 }
 
-// ============================================================
-//  setup / loop
-// ============================================================
+
 void setup() {
   Serial.setRxBufferSize(32768);
   Serial.begin(256000);
@@ -827,10 +803,10 @@ void setup() {
 }
 
 void loop() {
-  // ⭐ WebSocket 事件泵（必须在 loop 高频调用）
+
   if (ws_server_started) webSocket.loop();
 
-  // ⭐ pending bin 超时清理
+
   if (_pending.kind != BIN_NONE
       && millis() - _pending.last_ms > _pending.timeout_ms) {
     esp_printf("NAK:%lu:timeout\n", (unsigned)_pending.id);

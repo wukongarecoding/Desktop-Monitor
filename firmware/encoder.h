@@ -1,15 +1,17 @@
-// encoder.h
 #pragma once
 #include <Arduino.h>
 #include "config.h"
 
 enum EncoderEvent {
-  ENC_NONE = 0, ENC_LEFT, ENC_RIGHT, ENC_PRESS, ENC_BACK
+  ENC_NONE = 0,
+  ENC_LEFT,
+  ENC_RIGHT,
+  ENC_PRESS,
+  ENC_BACK
 };
 
-// ---- 编码器 A/B 仍用中断（高频，需要）----
-static volatile int  enc_delta  = 0;
-static volatile int  enc_lastA  = 0;
+static volatile int enc_delta = 0;
+static volatile int enc_lastA = 0;
 
 static void IRAM_ATTR enc_isr() {
   int a = digitalRead(PIN_ENC_A);
@@ -20,17 +22,16 @@ static void IRAM_ATTR enc_isr() {
   }
 }
 
-// ---- 按键：主循环轮询 + 20ms 状态机去抖 ----
 struct BtnDebounce {
-  uint8_t  pin;
-  bool     stable;
-  bool     last_raw;
+  uint8_t pin;
+  bool stable;
+  bool last_raw;
   uint32_t last_change;
-  bool     pressed_evt;
+  bool pressed_evt;
 };
 
-static BtnDebounce _btn_sw = {PIN_ENC_SW,   HIGH, HIGH, 0, false};
-static BtnDebounce _btn_bk = {PIN_BTN_BACK, HIGH, HIGH, 0, false};
+static BtnDebounce _btn_sw = { PIN_ENC_SW, HIGH, HIGH, 0, false };
+static BtnDebounce _btn_bk = { PIN_BTN_BACK, HIGH, HIGH, 0, false };
 
 static void encoder_init() {
   pinMode(PIN_ENC_A, INPUT_PULLUP);
@@ -55,7 +56,7 @@ static void _btn_poll(BtnDebounce& b) {
   }
   if ((now - b.last_change) >= 20 && b.stable != raw) {
     b.stable = raw;
-    if (raw == LOW) b.pressed_evt = true;   // 稳定 20ms 的按下沿
+    if (raw == LOW) b.pressed_evt = true;
   }
 }
 
@@ -66,13 +67,20 @@ static EncoderEvent encoder_read() {
   EncoderEvent e = ENC_NONE;
   noInterrupts();
   int d = enc_delta;
-  bool sw = _btn_sw.pressed_evt; _btn_sw.pressed_evt = false;
-  bool bk = _btn_bk.pressed_evt; _btn_bk.pressed_evt = false;
+  bool sw = _btn_sw.pressed_evt;
+  _btn_sw.pressed_evt = false;
+  bool bk = _btn_bk.pressed_evt;
+  _btn_bk.pressed_evt = false;
 
   if (bk) e = ENC_BACK;
   else if (sw) e = ENC_PRESS;
-  else if (d >= 2)  { enc_delta -= 2; e = ENC_RIGHT; }
-  else if (d <= -2) { enc_delta += 2; e = ENC_LEFT; }
+  else if (d >= 2) {
+    enc_delta -= 2;
+    e = ENC_RIGHT;
+  } else if (d <= -2) {
+    enc_delta += 2;
+    e = ENC_LEFT;
+  }
 
   interrupts();
   return e;
